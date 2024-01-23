@@ -30,8 +30,8 @@ def match_soa_and_sorep(soa, sorep):
     sorep_soa_grouped = pd.DataFrame()
     try:
         # 
-        sorep_soa_matched = sorep_soa_matched[['Transaction Date', 'S. Order #', 'Order No.', 'Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5', 'Amount_y']]
-        agg_funcs = {'Transaction Date' : 'first', 'S. Order #' : 'first', 'Order No.' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount_y':'sum',}
+        sorep_soa_matched = sorep_soa_matched[['Transaction Date', 'S. Order #', 'Order No.', 'Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5', 'Amount_x']]
+        agg_funcs = {'Transaction Date' : 'first', 'S. Order #' : 'first', 'Order No.' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount_x':'first',}
         sorep_soa_grouped = sorep_soa_matched.groupby(['Order No.']).agg(agg_funcs)
     except:
         #
@@ -44,6 +44,10 @@ def join_soreg_and_sorep_and_soa(groupd_soa_and_sorep, soreg):
         matched_soreg_sorep_soa = pd.merge(groupd_soa_and_sorep, soreg, left_on="S. Order #", right_on="SO #", how="left")
     except:
         return False
+    #print(matched_soreg_sorep_soa[matched_soreg_sorep_soa["Qty"] > 1]["Amount_x", "Qty", "Amount", "S. Order #", "Order No."])
+    #print(matched_soreg_sorep_soa.columns)
+    #matched_soreg_sorep_soa["Amount"]
+
     return matched_soreg_sorep_soa
 
 def check_if_existing_si(matched_soreg_sorep_soa, sirep):
@@ -107,6 +111,8 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
 
     matched_soreg_sorep_soa["SalesInvoiceCode"] = generate_si_batch(int(so_start), int(so_start) + len(matched_soreg_sorep_soa))
     #matched_soreg_sorep_soa.insert(0, 'SalesInvoiceCode', range(123, 123 + len(matched_soreg_sorep_soa)))
+    matched_soreg_sorep_soa["Order No."] = pd.to_numeric(matched_soreg_sorep_soa["Order No."])
+
     matched_soreg_sorep_soa["SalesInvoiceDate"] = last_day # get invoice date
     matched_soreg_sorep_soa["PostingDate"] = last_day # get posting date
     matched_soreg_sorep_soa["OurDONO"] = ""
@@ -149,7 +155,8 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
     matched_soreg_sorep_soa["Stock"] = matched_soreg_sorep_soa["Stock #"]
     matched_soreg_sorep_soa["StockLocation"] = ""
     # ...
-    matched_soreg_sorep_soa["UnitPrice"] = matched_soreg_sorep_soa["Amount"]
+    matched_soreg_sorep_soa["UnitPrice"] = pd.to_numeric(matched_soreg_sorep_soa["Amount_x"])
+    matched_soreg_sorep_soa["Qty"] = pd.to_numeric(matched_soreg_sorep_soa["Qty"]) 
     matched_soreg_sorep_soa["Discount"] = ""
     matched_soreg_sorep_soa["GLAccount"] = ""
     matched_soreg_sorep_soa["CostCentre"] = ""
@@ -174,10 +181,6 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
 
     output_tab = matched_soreg_sorep_soa[["SalesInvoiceCode", "SalesInvoiceDate", "PostingDate", "OurDONO", "DueDate", "GlobalProgressInvoicingRate", "IsApproved", "IsDeferredVAT", "TaxDate", "Debtor", "CurrencyRate", "ReverseRate", "SalesPerson", "Term", "Order No.", "Reference 1", "Reference 2", "Reference 3", "Reference 4", "Reference 5", "Remark1", "Remark2", "Remark3", "Remark4", "Remark5", "Project", "StockLocation", "DORegistationNo", "DOArea", "CostCentre", "IsCancelled", "IsTaxInclusive", "IsRounding", "IsNonTaxInvoice", "none", "ProgressInvoicingRate", "StockType", "SerialNumber", "StockBatchNumber", "DebtorItem", "ServiceCost", "PackingUOM", "Packing", "PackingQty", "Numbering", "Stock", "StockLocation", "Qty", "UOM", "UnitPrice", "Discount", "GLAccount", "CostCentre", "Description", "IsTaxInclusive", "Project", "ReferenceNo","Ref", "Ref2", "Ref3", "Ref4", "Ref5", "DateRef1", "DateRef2", "NumRef1", "NumRef2", "TaxCode", "TariffCode", "TaxRate", "WTaxCode", "WTaxRate", "WVatCode", "WVatRate"]]
     return output_tab
-    # create file
-    #matched_soreg_sorep_soa.to_excel('output.xlsx', sheet_name="Sheet 1", index=False)
-    #print(output_tab)
-    #output_tab.to_excel('output.xlsx', sheet_name="Sheet 1", index=False)
  
 def generate_si(num):
     # `INV` + 20 digits (num within)
