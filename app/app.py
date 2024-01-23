@@ -130,7 +130,7 @@ class MainWindow(QMainWindow):
 
         # set window defaults
         self.setWindowTitle("Sales Invoice Uploader")
-        self.setFixedSize(QSize(450, 545))
+        self.setFixedSize(QSize(450, 570))
 
         self.file_name_label = QLabel("Filename")
         self.file_name_input = QLineEdit()
