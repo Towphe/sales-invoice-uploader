@@ -101,6 +101,15 @@ class MainWindow(QMainWindow):
             
             ws['AI1'] = ""
 
+            for i in range(2, output.shape[0] + 2):
+                ws.cell(row=i, column=2).number_format = 'mm-dd-yyyy'
+                ws.cell(row=i, column=3).number_format = 'mm-dd-yyyy'
+                ws.cell(row=i, column=5).number_format = 'mm-dd-yyyy'
+                ws.cell(row=i, column=9).number_format = 'mm-dd-yyyy'
+                ws.cell(row=i,column=15).number_format = '0'
+                ws.cell(row=i,column=48).number_format = '0'
+                ws.cell(row=i,column=50).number_format = '0.00'
+
             # save directory
             # save file to directory
             self.file_dir = QFileDialog.getExistingDirectory(self, "Save File")
@@ -173,7 +182,7 @@ class MainWindow(QMainWindow):
         
         self.loading_label = QLabel("")
 
-        submit_button = QPushButton("Submit")
+        submit_button = QPushButton("Generate")
         submit_button.clicked.connect(self.submit)
         
         
