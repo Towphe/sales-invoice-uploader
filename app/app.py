@@ -1,8 +1,13 @@
 from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QComboBox, QPushButton, QVBoxLayout, QWidget, QLabel, QLineEdit, QFileDialog, QDialog
+from openpyxl import Workbook, worksheet
+from openpyxl.styles import PatternFill
+from openpyxl.utils.dataframe import dataframe_to_rows
 import functools
 import sys
-from util import create_template
+from util import create_template, isValidInt
+import time
 
 class UploadButton(QPushButton):
     def get_filename(self):
@@ -15,8 +20,8 @@ class UploadButton(QPushButton):
     def upload(self, main, f_name):
         self.f_name = QFileDialog.getOpenFileName(self,
                                                   "Open File",
-                                                  "${HOME}",
-                                                  "All files(*)") # filter for excel worksheets later
+                                                  "${self.previous_dir}",
+                                                  "Excel Workbooks (*.xlsx)") # filter for excel worksheets later
         # this stores file
         # try to get root name
 
@@ -27,6 +32,7 @@ class UploadButton(QPushButton):
     def __init__(self, label):
         super().__init__(label)
         self.id = label
+        self.previous_dir = "${HOME}"
         self.f_name = ""
 
 class MainWindow(QMainWindow):
@@ -35,31 +41,86 @@ class MainWindow(QMainWindow):
         # validate later
         self.si_no = self.si_input.text()
     
-    def submit(self):
-        # check first if input is complete
+    def store_year(self):
+        self.year = self.year_input.text()
 
-        # generate file here using util
+    def store_file_name(self):
+        self.file_name = self.file_name_input.text()
+    
+    def dlg_close(dlg:QPushButton):
+        dlg.close()
+
+    def submit(self):
+        self.loading_label.setText("Loading...")
+        QApplication.processEvents()
+
+        status = "Convert successful"
+
+        # validate text inputs
+        self.file_name = self.file_name_input.text()
         self.si_no = self.si_input.text()
+        self.si_month = self.month_selection.currentText()
+        self.year = self.year_input.text()
+        if (not isValidInt(self.year)):
+            # mark as unsuccessful
+            is_valid = False
+            message = "Year"
 
         # then call util function here
-        is_success = create_template(self.file_dict.get('Lazada SOA File')[0], self.file_dict.get('QNE Sales Order Report File')[0], self.file_dict.get('QNE Sales Invoice Report File')[0], self.file_dict.get('QNE Sales Order Register File')[0])
+        output = create_template(self.si_no, self.si_month, int(self.year), self.file_dict.get('Lazada SOA File')[0], self.file_dict.get('QNE Sales Order Report File')[0], self.file_dict.get('QNE Sales Invoice Report File')[0], self.file_dict.get('QNE Sales Order Register File')[0])
         
         dlg = QDialog(self)
         dlg.setWindowTitle("Success")
-        
-        
-        if is_success:
-            message = QLabel("Convert Successful")
+
+        if type(output) is tuple:
+            message = QLabel(output[0])
         else:
-            message = QLabel("Convert Unsuccessful")
+            # get pandas file
+            # edit a bit
+            # open directory prompt
+            wb = Workbook()
+            ws = wb.active
+
+            for r in dataframe_to_rows(output, index=False, header=True):
+                ws.append(r)
+
+            # color first row accordingly
+            orange_fill = PatternFill(start_color='D2691E', fill_type="solid")
+            for col in ws['A':'AH']:
+                col[0].fill = orange_fill
+
+            grey_fill = PatternFill(start_color='808080', fill_type="solid")
+            for i in range(1,output.shape[0]):
+                ws['AI' + str(i)].fill = grey_fill
+            
+            #ws['AI1'].fill = PatternFill(start_color='808080', fill_type="solid")
+            
+            blue_fill = PatternFill(start_color='00BFFF', fill_type="solid")
+            for col in ws['AJ':'BU']:
+                col[0].fill = blue_fill
+            
+            ws['AI1'] = ""
+
+            # save directory
+            # save file to directory
+            self.file_dir = QFileDialog.getExistingDirectory(self, "Save File")
+            wb.save(self.file_dir + "/" + self.file_name + ".xlsx")
+            
+            message = QLabel(status)
+
+        self.loading_label.setText("")
+
+        dlg.close_button = QPushButton("Close")
+        dlg.close_button.clicked.connect(dlg.close)
 
         dlg_layout = QVBoxLayout()
+
         dlg_layout.addWidget(message)
+        dlg_layout.addWidget(dlg.close_button)
         dlg.setLayout(dlg_layout)
 
         dlg.exec()
-        # then prompt output file later.
-        
+    
     def __init__(self):
         super().__init__()
 
@@ -69,7 +130,11 @@ class MainWindow(QMainWindow):
 
         # set window defaults
         self.setWindowTitle("Sales Invoice Uploader")
-        self.setFixedSize(QSize(450, 450))
+        self.setFixedSize(QSize(450, 545))
+
+        self.file_name_label = QLabel("Filename")
+        self.file_name_input = QLineEdit()
+        self.file_name_input.textChanged.connect(self.store_file_name)
         
         self.si_label = QLabel("SI Number Start")
         self.si_input = QLineEdit()
@@ -81,8 +146,9 @@ class MainWindow(QMainWindow):
         self.month_selection = QComboBox()
         self.month_selection.addItems(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'])
 
-        #self.soa_label = QLabel("Lazada SOA File")
-        #self.soa_upload = QFileDialog()
+        self.year_label = QLabel("Year")
+        self.year_input = QLineEdit()
+        self.year_input.textChanged.connect(self.store_year)
 
         self.sorep_label = QLabel("QNE Sales Order Report File")
         self.sorep_upload = UploadButton("Upload QNE Sales Order Report File")
@@ -104,16 +170,27 @@ class MainWindow(QMainWindow):
         self.soa_upload = UploadButton("Upload Lazada SOA File")
         self.soa_upload_fname = QLabel("")
         self.soa_upload.clicked.connect(functools.partial(self.soa_upload.upload, self, self.soa_upload_fname))
+        
+        self.loading_label = QLabel("")
 
         submit_button = QPushButton("Submit")
         submit_button.clicked.connect(self.submit)
+        
+        
 
         layout = QVBoxLayout()
+
+        layout.addWidget(self.file_name_label)
+        layout.addWidget(self.file_name_input)
+
         layout.addWidget(self.si_label)
         layout.addWidget(self.si_input)
 
         layout.addWidget(self.month_label)
         layout.addWidget(self.month_selection)
+
+        layout.addWidget(self.year_label)
+        layout.addWidget(self.year_input)
 
         layout.addWidget(self.soa_label)
         layout.addWidget(self.soa_upload)
@@ -131,8 +208,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.soreg_upload)
         layout.addWidget(self.soreg_fname)
 
-
         layout.addWidget(submit_button)
+        layout.addWidget(self.loading_label)
         
         container = QWidget()
         container.setLayout(layout)
