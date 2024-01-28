@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import calendar
 
 month_index = {
@@ -18,20 +19,32 @@ month_index = {
 
 def match_soa_and_sorep(soa, sorep):    
     sorep_soa_matched = pd.DataFrame()
+
+    print(soa.shape[0])
+    print(sorep.shape[0])
+    soa[['Order No.']] = soa[['Order No.']].astype(str)
+    sorep[['Reference No']] = sorep[['Reference No']].astype(str)
+    print("-----")
+    print(soa.shape[0])
+    print(sorep.shape[0])
+
     try:
         # join two tables together
-        sorep_soa_matched = pd.merge(soa, sorep, how="left", left_on="Order No.", right_on="Order No.")
+        sorep_soa_matched = pd.merge(soa, sorep, how="left", left_on="Order No.", right_on="Reference No")
         
         #sorep_soa_matched.to_excel("sorep_soa_matched.xlsx", "Sheet 1", index=False)
     except:
+        print("Here 1")
         return False
     
     #sorep_soa_matched = pd.DataFrame()
     sorep_soa_grouped = pd.DataFrame()
+    print(sorep_soa_matched)
+    print(sorep_soa_matched.columns)
     try:
         # 
-        sorep_soa_matched = sorep_soa_matched[['Transaction Date', 'S. Order #', 'Order No.', 'Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5', 'Amount_x']]
-        agg_funcs = {'Transaction Date' : 'first', 'S. Order #' : 'first', 'Order No.' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount_x':'first',}
+        sorep_soa_matched = sorep_soa_matched[['Transaction Date', 'S. Order #', 'Order No.', 'Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5', 'Amount']]
+        agg_funcs = {'Transaction Date' : 'first', 'S. Order #' : 'first', 'Order No.' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount':'first',}
         sorep_soa_grouped = sorep_soa_matched.groupby(['Order No.']).agg(agg_funcs)
     except:
         #
@@ -63,6 +76,9 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
     # get soa data
     soa = pd.read_excel(soa_dir)
     filtered_soa = pd.DataFrame()
+
+    # soa = soa.astype({"Order No.": "string"})
+    # sorep = sorep.astype({"Reference No":"string"})
     try:
         filtered_soa = soa[(soa["Transaction Type"] == "Orders-Sales") | (soa["Transaction Type"] == "Refunds-Claims")]
     except:
@@ -75,7 +91,6 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
         filtered_sorep = sorep[sorep["Name"] == "JABRA PH - ONLINE SALES"]
     except:
         return ("Invalid SO Report file", False)
-    
 
     sorep_soa_grouped = match_soa_and_sorep(filtered_soa, filtered_sorep)
     if type(sorep_soa_grouped) == bool:
@@ -180,6 +195,7 @@ def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir
     matched_soreg_sorep_soa["WVatRate"] = ""
 
     output_tab = matched_soreg_sorep_soa[["SalesInvoiceCode", "SalesInvoiceDate", "PostingDate", "OurDONO", "DueDate", "GlobalProgressInvoicingRate", "IsApproved", "IsDeferredVAT", "TaxDate", "Debtor", "CurrencyRate", "ReverseRate", "SalesPerson", "Term", "Order No.", "Reference 1", "Reference 2", "Reference 3", "Reference 4", "Reference 5", "Remark1", "Remark2", "Remark3", "Remark4", "Remark5", "Project", "StockLocation", "DORegistationNo", "DOArea", "CostCentre", "IsCancelled", "IsTaxInclusive", "IsRounding", "IsNonTaxInvoice", "none", "ProgressInvoicingRate", "StockType", "SerialNumber", "StockBatchNumber", "DebtorItem", "ServiceCost", "PackingUOM", "Packing", "PackingQty", "Numbering", "Stock", "StockLocation", "Qty", "UOM", "UnitPrice", "Discount", "GLAccount", "CostCentre", "Description", "IsTaxInclusive", "Project", "ReferenceNo","Ref", "Ref2", "Ref3", "Ref4", "Ref5", "DateRef1", "DateRef2", "NumRef1", "NumRef2", "TaxCode", "TariffCode", "TaxRate", "WTaxCode", "WTaxRate", "WVatCode", "WVatRate"]]
+    output_tab = output_tab.dropna(subset=['Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5'])
     return output_tab
  
 def generate_si(num):
