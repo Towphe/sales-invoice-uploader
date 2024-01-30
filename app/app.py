@@ -6,7 +6,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 import functools
 import sys
-from util import create_template, isValidInt
+from util import create_template, isValidInt, generate_si
 import time
 
 class UploadButton(QPushButton):
@@ -81,7 +81,25 @@ class MainWindow(QMainWindow):
             wb = Workbook()
             ws = wb.active
 
+            print(output.shape)
+            previous_r = None
+            current_si_no = int(self.si_no)
             for r in dataframe_to_rows(output, index=False, header=True):
+                if r[0] == "SalesInvoiceCode":
+                    ws.append(r)
+                    continue
+                if previous_r == None:
+                    r[0] = generate_si(current_si_no)
+                    current_si_no += 1
+                    previous_r = r
+                elif r[14] != previous_r[14]:
+                    # set non-product related columns to n/a
+                    r[0] = generate_si(current_si_no)
+                    current_si_no += 1
+                    previous_r = r
+                else:
+                    for i in range(0, 31):
+                        r[i] = ""
                 ws.append(r)
 
             # color first row accordingly
