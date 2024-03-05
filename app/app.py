@@ -6,7 +6,7 @@ from openpyxl.styles import PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 import functools
 import sys
-from util import create_template, isValidInt, generate_si
+from util import create_template, isValidInt, generate_si, tax_index
 import time
 
 class UploadButton(QPushButton):
@@ -61,13 +61,15 @@ class MainWindow(QMainWindow):
         self.si_no = self.si_input.text()
         self.si_month = self.month_selection.currentText()
         self.year = self.year_input.text()
+        self.sales_person = self.sales_person_input.currentText()
+
         if (not isValidInt(self.year)):
             # mark as unsuccessful
             is_valid = False
             message = "Year"
 
         # then call util function here
-        output = create_template(self.si_no, self.si_month, int(self.year), self.file_dict.get('Lazada SOA File')[0], self.file_dict.get('QNE Sales Order Report File')[0], self.file_dict.get('QNE Sales Invoice Report File')[0], self.file_dict.get('QNE Sales Order Register File')[0])
+        output = create_template(self.si_no, self.si_month, int(self.year), self.file_dict.get('Lazada SOA File')[0], self.file_dict.get('QNE Sales Order Report File')[0], self.file_dict.get('QNE Sales Invoice Report File')[0], self.file_dict.get('QNE Sales Order Register File')[0], self.sales_person)
         
         dlg = QDialog(self)
         dlg.setWindowTitle("Success")
@@ -157,7 +159,7 @@ class MainWindow(QMainWindow):
 
         # set window defaults
         self.setWindowTitle("Sales Invoice Uploader")
-        self.setFixedSize(QSize(450, 570))
+        self.setFixedSize(QSize(450, 600))
 
         self.file_name_label = QLabel("Filename")
         self.file_name_input = QLineEdit()
@@ -200,10 +202,12 @@ class MainWindow(QMainWindow):
         
         self.loading_label = QLabel("")
 
+        self.sales_person_label = QLabel("Sales Person")
+        self.sales_person_input = QComboBox()
+        self.sales_person_input.addItems(tax_index.keys())
+
         submit_button = QPushButton("Generate")
         submit_button.clicked.connect(self.submit)
-        
-        
 
         layout = QVBoxLayout()
 
@@ -234,6 +238,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.soreg_label)
         layout.addWidget(self.soreg_upload)
         layout.addWidget(self.soreg_fname)
+
+        layout.addWidget(self.sales_person_label)
+        layout.addWidget(self.sales_person_input)
 
         layout.addWidget(submit_button)
         layout.addWidget(self.loading_label)

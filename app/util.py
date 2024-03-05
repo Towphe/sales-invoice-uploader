@@ -2,6 +2,16 @@ import pandas as pd
 import numpy as np
 import calendar
 
+class TaxInfo():
+    def __init__(self, sales_person: str, debtor: str):
+        self.sales_person = sales_person
+        self.debtor = debtor
+
+tax_index = {
+    "LAZADA JABRA" : TaxInfo("LAZADA JABRA", "102-J001"),
+    "LAZADA LG" : TaxInfo("LAZADA LG", "102-L001")
+}
+
 month_index = {
     "January" : 1,
     "February" : 2,
@@ -16,175 +26,6 @@ month_index = {
     "November" : 11,
     "December" : 12
 }
-
-def match_soa_and_sorep(soa, sorep):    
-    sorep_soa_matched = pd.DataFrame()
-
-    soa[['Order No.']] = soa[['Order No.']].astype(str)
-    sorep[['Reference No']] = sorep[['Reference No']].astype(str)
-
-    try:
-        # join two tables together
-        
-        sorep_soa_matched = pd.merge(soa, sorep, how="left", left_on="Order No.", right_on="Reference No")
-    except:
-        return False
-    
-    sorep_soa_grouped = pd.DataFrame()
-    try:
-        sorep_soa_matched = sorep_soa_matched[['Transaction Date', 'S. Order #', 'Order No.', 'Reference 1', 'Reference 2', 'Reference 3', 'Reference 4', 'Reference 5', 'Amount']]
-        
-        agg_funcs = {'Transaction Date' : 'first', 'S. Order #' : 'first', 'Order No.' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount':'first',}
-        sorep_soa_grouped = sorep_soa_matched.groupby(['Order No.']).agg(agg_funcs)
-    except:
-        return False
-    
-    return sorep_soa_grouped
-
-def join_soreg_and_sorep_and_soa(groupd_soa_and_sorep, soreg):
-    matched_soreg_sorep_soa = pd.DataFrame()
-    try:
-        matched_soreg_sorep_soa = pd.merge(groupd_soa_and_sorep, soreg, left_on="S. Order #", right_on="SO #", how="left")
-    except:
-        return False
-    return matched_soreg_sorep_soa
-
-def check_if_existing_si(matched_soreg_sorep_soa, sirep):
-    #soreg_sorep_wo_si = matched_soreg_sorep_soa[matched_soreg_sorep_soa["S. Order #"].isin(sirep["Transfer From"]) == False]
-    soreg_sorep_wo_si = pd.DataFrame()
-    try:
-        soreg_sorep_wo_si = matched_soreg_sorep_soa[~matched_soreg_sorep_soa["S. Order #"].isin(sirep["Transfer From"])]
-    except:
-        return False
-    return soreg_sorep_wo_si    
-
-def create_template(so_start:str, si_month:str, year:int, soa_dir:str, sorep_dir:str, sirep_dir:str, soreg_dir:str):
-    # get soa data
-    soa = pd.read_excel(soa_dir)
-    filtered_soa = pd.DataFrame()
-
-    # soa = soa.astype({"Order No.": "string"})
-    # sorep = sorep.astype({"Reference No":"string"})
-    try:
-        filtered_soa = soa[(soa["Transaction Type"] == "Orders-Sales") | (soa["Transaction Type"] == "Refunds-Claims")]
-    except:
-        return ("Invalid Lazada SOA file", False)
-
-    # get sorep data
-    sorep = pd.read_excel(sorep_dir)
-    filtered_sorep = pd.DataFrame()
-    try:
-        filtered_sorep = sorep[sorep["Name"] == "JABRA PH - ONLINE SALES"]
-    except:
-        return ("Invalid SO Report file", False)
-
-    sorep_soa_grouped = match_soa_and_sorep(filtered_soa, filtered_sorep)
-    if type(sorep_soa_grouped) == bool:
-        # say invalid
-        return ("Invalid SOA ", False)
-
-    sirep = pd.read_excel(sirep_dir)
-
-    # filter to SI Report later
-    # => if order already has SI, disregard
-    try:
-        sorep_soa_grouped = check_if_existing_si(sorep_soa_grouped, sirep)
-    except:
-        return ("Error grouping Sales Orders", False)
-
-    if type(sorep_soa_grouped) == bool:
-        return ("Error grouping Sales Orders", False)
-    
-    if sorep_soa_grouped.shape[0] == 0:
-        # empty dataframe
-        return ("No match", False)
-
-    #Batching and joining with SO Register
-
-    soreg = pd.read_excel(soreg_dir)
-
-    matched_soreg_sorep_soa = join_soreg_and_sorep_and_soa(sorep_soa_grouped, soreg)
-
-    if type(matched_soreg_sorep_soa) is bool:
-        return ("Invalid SO Register File", False)
-
-    last_day = get_last_day(si_month, year)
-
-
-    #matched_soreg_sorep_soa["SalesInvoiceCode"] = generate_si_batch(int(so_start), int(so_start) + len(matched_soreg_sorep_soa))
-    matched_soreg_sorep_soa["SalesInvoiceCode"] = ""
-    #matched_soreg_sorep_soa.insert(0, 'SalesInvoiceCode', range(123, 123 + len(matched_soreg_sorep_soa)))
-    matched_soreg_sorep_soa["Order No."] = pd.to_numeric(matched_soreg_sorep_soa["Order No."])
-
-    matched_soreg_sorep_soa["SalesInvoiceDate"] = last_day # get invoice date
-    matched_soreg_sorep_soa["PostingDate"] = last_day # get posting date
-    matched_soreg_sorep_soa["OurDONO"] = ""
-    matched_soreg_sorep_soa["DueDate"] = last_day # set as end of month
-    matched_soreg_sorep_soa["GlobalProgressInvoicingRate"] = ""
-    matched_soreg_sorep_soa["IsApproved"] = True    
-    matched_soreg_sorep_soa["IsDeferredVAT"] = False
-    matched_soreg_sorep_soa["TaxDate"] = last_day
-    matched_soreg_sorep_soa["Debtor"] = "102-J001" # allow customization
-    matched_soreg_sorep_soa["CurrencyRate"] = "N8" # allow customization
-    matched_soreg_sorep_soa["ReverseRate"] = "N8" # allow customization
-    matched_soreg_sorep_soa["SalesPerson"] = "LAZADA-JABRA"
-    matched_soreg_sorep_soa["Term"] = "C.O.D."
-    matched_soreg_sorep_soa["Remark1"] = matched_soreg_sorep_soa["S. Order #"]
-    matched_soreg_sorep_soa["Remark2"] = ""
-    matched_soreg_sorep_soa["Remark3"] = ""
-    matched_soreg_sorep_soa["Remark4"] = ""
-    matched_soreg_sorep_soa["Remark5"] = ""
-    matched_soreg_sorep_soa["Project"] = ""
-    matched_soreg_sorep_soa["StockLocation"] = ""
-    matched_soreg_sorep_soa["DORegistationNo"] = ""
-    matched_soreg_sorep_soa["DOArea"] = ""
-    matched_soreg_sorep_soa["CostCentre"] = ""
-    matched_soreg_sorep_soa["IsCancelled"] = ""
-    matched_soreg_sorep_soa["IsTaxInclusive"] = 1
-    matched_soreg_sorep_soa["IsRounding"] = ""
-    matched_soreg_sorep_soa["IsNonTaxInvoice"] = ""
-    matched_soreg_sorep_soa["none"] = ""
-    #
-    matched_soreg_sorep_soa["ProgressInvoicingRate"] = ""
-    matched_soreg_sorep_soa["StockType"] = ""
-    matched_soreg_sorep_soa["SerialNumber"] = ""
-    matched_soreg_sorep_soa["StockBatchNumber"] = ""
-    matched_soreg_sorep_soa["DebtorItem"] = ""
-    matched_soreg_sorep_soa["ServiceCost"] = ""
-    matched_soreg_sorep_soa["PackingUOM"] = ""
-    matched_soreg_sorep_soa["Packing"] = ""
-    matched_soreg_sorep_soa["PackingQty"] = ""
-    matched_soreg_sorep_soa["Numbering"] = ""
-    matched_soreg_sorep_soa["Stock"] = matched_soreg_sorep_soa["Stock #"]
-    matched_soreg_sorep_soa["StockLocation"] = ""
-    # ...
-    matched_soreg_sorep_soa["UnitPrice"] = pd.to_numeric(matched_soreg_sorep_soa["Amount_x"])
-    matched_soreg_sorep_soa["Qty"] = pd.to_numeric(matched_soreg_sorep_soa["Qty"]) 
-    matched_soreg_sorep_soa["Discount"] = ""
-    matched_soreg_sorep_soa["GLAccount"] = ""
-    matched_soreg_sorep_soa["CostCentre"] = ""
-    matched_soreg_sorep_soa["ReferenceNo"] = ""
-    #
-    matched_soreg_sorep_soa["Ref"] = ""
-    matched_soreg_sorep_soa["Ref2"] = ""
-    matched_soreg_sorep_soa["Ref3"] = ""
-    matched_soreg_sorep_soa["Ref4"] = ""
-    matched_soreg_sorep_soa["Ref5"] = ""
-    matched_soreg_sorep_soa["DateRef1"] = ""
-    matched_soreg_sorep_soa["DateRef2"] = ""
-    matched_soreg_sorep_soa["NumRef1"] = ""
-    matched_soreg_sorep_soa["NumRef2"] = ""
-    matched_soreg_sorep_soa["TaxCode"] = "SR-SP"
-    matched_soreg_sorep_soa["TariffCode"] = ""
-    matched_soreg_sorep_soa["TaxRate"] = "12.00%"
-    matched_soreg_sorep_soa["WTaxCode"] = ""
-    matched_soreg_sorep_soa["WTaxRate"] = "0.00"
-    matched_soreg_sorep_soa["WVatCode"] = "0.00"
-    matched_soreg_sorep_soa["WVatRate"] = ""
-
-    output_tab = matched_soreg_sorep_soa[["SalesInvoiceCode", "SalesInvoiceDate", "PostingDate", "OurDONO", "DueDate", "GlobalProgressInvoicingRate", "IsApproved", "IsDeferredVAT", "TaxDate", "Debtor", "CurrencyRate", "ReverseRate", "SalesPerson", "Term", "Order No.", "Reference 1", "Reference 2", "Reference 3", "Reference 4", "Reference 5", "Remark1", "Remark2", "Remark3", "Remark4", "Remark5", "Project", "StockLocation", "DORegistationNo", "DOArea", "CostCentre", "IsCancelled", "IsTaxInclusive", "IsRounding", "IsNonTaxInvoice", "none", "ProgressInvoicingRate", "StockType", "SerialNumber", "StockBatchNumber", "DebtorItem", "ServiceCost", "PackingUOM", "Packing", "PackingQty", "Numbering", "Stock", "StockLocation", "Qty", "UOM", "UnitPrice", "Discount", "GLAccount", "CostCentre", "Description", "IsTaxInclusive", "Project", "ReferenceNo","Ref", "Ref2", "Ref3", "Ref4", "Ref5", "DateRef1", "DateRef2", "NumRef1", "NumRef2", "TaxCode", "TariffCode", "TaxRate", "WTaxCode", "WTaxRate", "WVatCode", "WVatRate"]]
-    
-    return output_tab
  
 def generate_si(num):
     # `INV` + 20 digits (num within)
@@ -227,5 +68,168 @@ def isValidInt(text: str):
         return False
     return True
 
-# temp = create_template(23062, "January", 2024, "/home/tope/Desktop/SOA Laz Jabra Jan 1-11 2024.xlsx", "/home/tope/Desktop/625Tech SO Jan 1-11 2024.xlsx", "/home/tope/Desktop/625Tech SI Jan 1-11 2024.xlsx", "/home/tope/Desktop/625Tech SOR Jan 1-11 2024.xlsx")
-# print(temp.shape)
+def create_template(invoice_start:int, month:str, year:str, soa_dir:str, so_dir:str, si_dir:str, sor_dir:str, sales_person:str):
+    
+    # get soa file
+    soa_df = pd.read_excel(soa_dir)
+    soa_df[['Order No.']] = soa_df[['Order No.']].astype(str)
+
+    # filter soa to only rows with column `Transaction Type` to `Order Sales` or `Refund Claims`
+    try:
+        soa_df = soa_df[(soa_df["Transaction Type"] == "Orders-Sales") | (["Transaction Type"] == "Refunds-Claims")]
+    except:
+        return ("Error in SOA file", False)
+
+    # open si file
+    si_df = pd.read_excel(si_dir)
+
+    try:
+        # filter soa to entries with NO entry yet in SI file
+        #soa_df = soa_df[~(soa_df["Order No."].isin(si_df["Reference No"]))]
+        soa_df = soa_df[~(soa_df["Order No."].isin(si_df["Reference No"]))]
+    except:
+        return ("Error in SI file", False)
+    
+    print(f"filtered soa: {soa_df.shape[0]}")
+    
+    # get so file
+    so_df = pd.read_excel(so_dir)
+
+    # format types
+    
+    so_df[['Reference No']] = so_df[['Reference No']].astype(str)
+
+    try:
+        # match soa and so
+        matched_soa_so = pd.merge(soa_df, so_df, how='left', left_on='Order No.', right_on='Reference No')
+    except:
+        return ("Error in SO file", False)
+    
+    matched_soa_so_grouped = pd.DataFrame()
+    so_soa_agg = {'Transaction Date' : 'first', 'Reference 1' : 'first', 'Reference 2': 'first', 'Reference 3' : 'first', 'Reference 4' : 'first', 'Reference 5' : 'first', 'Amount':'first',}
+
+    # try:
+    #     # aggregate according to order no., s. order #, and sku
+    #     matched_soa_so_grouped = matched_soa_so.groupby(['Order No.', 'S. Order #', 'Seller SKU'], as_index=False).agg(so_soa_agg)
+    # except:
+    #     return ("Error in Aggregation", False)
+    matched_soa_so_grouped = matched_soa_so.groupby(['Order No.', 'S. Order #', 'Seller SKU'], as_index=False).agg(so_soa_agg)
+    
+    print(f"aggregated soa & so: {matched_soa_so_grouped.shape[0]}")
+
+    # get soreg file
+    soreg_df = pd.read_excel(sor_dir)
+    
+    # merge previously grouped soa_so with soreg
+    matched_soa_so_sor = pd.DataFrame()
+    try:
+        # merge previously grouped soa_so with soreg
+        matched_soa_so_sor = pd.merge(matched_soa_so_grouped, soreg_df, how='left', left_on="S. Order #", right_on='SO #')
+    except:
+        return ("Error in SOR file", False)
+    
+    # fix formatting and add necessary columns
+    final_agg = {
+        'Amount_x' : 'first',
+        'Transaction Date' : 'first',
+        'Reference 1' : 'first',
+        'Reference 2' : 'first',
+        'Reference 3' : 'first',
+        'Reference 4' : 'first',
+        'Reference 5' : 'first',
+        'Date' : 'first',
+        'SO #' : 'first',
+        'Stock #' : 'first',
+        'Description' : 'first',
+        'Qty' : 'first',
+        'UOM' : 'first',
+        'Amount_y' : 'first',
+        'Tax' : 'first',
+        'Net' : 'first'
+    }
+    
+    matched_soa_so_sor = matched_soa_so_sor.groupby(['Order No.', 'S. Order #', 'Seller SKU'], as_index=False).agg(final_agg)
+
+    print(f"matched_soa_so_sor count: {matched_soa_so_sor.shape[0]}")
+
+    last_day = get_last_day(month, year)
+
+    matched_soa_so_sor["SalesInvoiceCode"] = ""
+    matched_soa_so_sor["SalesInvoiceDate"] = last_day # get invoice date
+    matched_soa_so_sor["PostingDate"] = last_day # get posting date
+    matched_soa_so_sor["OurDONO"] = ""
+    matched_soa_so_sor["DueDate"] = last_day # set as end of month
+    matched_soa_so_sor["GlobalProgressInvoicingRate"] = ""
+    matched_soa_so_sor["IsApproved"] = True    
+    matched_soa_so_sor["IsDeferredVAT"] = False
+    matched_soa_so_sor["TaxDate"] = last_day
+    matched_soa_so_sor["Debtor"] = tax_index[sales_person].debtor
+    matched_soa_so_sor["CurrencyRate"] = "N8" # allow customization
+    matched_soa_so_sor["ReverseRate"] = "N8" # allow customization
+    matched_soa_so_sor["SalesPerson"] = tax_index[sales_person].sales_person
+    matched_soa_so_sor["Term"] = "C.O.D."
+    matched_soa_so_sor["Remark1"] = matched_soa_so_sor["SO #"]
+    matched_soa_so_sor["Remark2"] = ""
+    matched_soa_so_sor["Remark3"] = ""
+    matched_soa_so_sor["Remark4"] = ""
+    matched_soa_so_sor["Remark5"] = ""
+    matched_soa_so_sor["Project"] = ""
+    matched_soa_so_sor["StockLocation"] = ""
+    matched_soa_so_sor["DORegistationNo"] = ""
+    matched_soa_so_sor["DOArea"] = ""
+    matched_soa_so_sor["CostCentre"] = ""
+    matched_soa_so_sor["IsCancelled"] = ""
+    matched_soa_so_sor["IsTaxInclusive"] = True
+    matched_soa_so_sor["IsRounding"] = ""
+    matched_soa_so_sor["IsNonTaxInvoice"] = ""
+    matched_soa_so_sor["none"] = ""
+    matched_soa_so_sor["ProgressInvoicingRate"] = ""
+    matched_soa_so_sor["StockType"] = ""
+    matched_soa_so_sor["SerialNumber"] = ""
+    matched_soa_so_sor["StockBatchNumber"] = ""
+    matched_soa_so_sor["DebtorItem"] = ""
+    matched_soa_so_sor["ServiceCost"] = ""
+    matched_soa_so_sor["PackingUOM"] = ""
+    matched_soa_so_sor["Packing"] = ""
+    matched_soa_so_sor["PackingQty"] = ""
+    matched_soa_so_sor["Numbering"] = ""
+    matched_soa_so_sor["Stock"] = matched_soa_so_sor["Stock #"]
+    matched_soa_so_sor["StockLocation"] = ""
+    # ...
+    matched_soa_so_sor["UnitPrice"] = pd.to_numeric(matched_soa_so_sor["Amount_x"])
+    matched_soa_so_sor["Qty"] = pd.to_numeric(matched_soa_so_sor["Qty"]) 
+    matched_soa_so_sor["Discount"] = ""
+    matched_soa_so_sor["GLAccount"] = ""
+    matched_soa_so_sor["CostCentre"] = ""
+    matched_soa_so_sor["ReferenceNo"] = ""
+    matched_soa_so_sor["Ref"] = ""
+    matched_soa_so_sor["Ref2"] = ""
+    matched_soa_so_sor["Ref3"] = ""
+    matched_soa_so_sor["Ref4"] = ""
+    matched_soa_so_sor["Ref5"] = ""
+    matched_soa_so_sor["DateRef1"] = ""
+    matched_soa_so_sor["DateRef2"] = ""
+    matched_soa_so_sor["NumRef1"] = ""
+    matched_soa_so_sor["NumRef2"] = ""
+    matched_soa_so_sor["TaxCode"] = "SR-SP"
+    matched_soa_so_sor["TariffCode"] = ""
+    matched_soa_so_sor["TaxRate"] = "12.00%"
+    matched_soa_so_sor["WTaxCode"] = ""
+    matched_soa_so_sor["WTaxRate"] = "0.00"
+    matched_soa_so_sor["WVatCode"] = "0.00"
+    matched_soa_so_sor["WVatRate"] = ""
+
+    matched_soa_so_sor.to_excel("test-output.xlsx")
+
+    output_tab = matched_soa_so_sor[["SalesInvoiceCode", "SalesInvoiceDate", "PostingDate", "OurDONO", "DueDate", "GlobalProgressInvoicingRate", "IsApproved", "IsDeferredVAT", "TaxDate", "Debtor", "CurrencyRate", "ReverseRate", "SalesPerson", "Term", "Order No.", "Reference 1", "Reference 2", "Reference 3", "Reference 4", "Reference 5", "Remark1", "Remark2", "Remark3", "Remark4", "Remark5", "Project", "StockLocation", "DORegistationNo", "DOArea", "CostCentre", "IsCancelled", "IsTaxInclusive", "IsRounding", "IsNonTaxInvoice", "none", "ProgressInvoicingRate", "StockType", "SerialNumber", "StockBatchNumber", "DebtorItem", "ServiceCost", "PackingUOM", "Packing", "PackingQty", "Numbering", "Stock", "StockLocation", "Qty", "UOM", "UnitPrice", "Discount", "GLAccount", "CostCentre", "Description", "IsTaxInclusive", "Project", "ReferenceNo","Ref", "Ref2", "Ref3", "Ref4", "Ref5", "DateRef1", "DateRef2", "NumRef1", "NumRef2", "TaxCode", "TariffCode", "TaxRate", "WTaxCode", "WTaxRate", "WVatCode", "WVatRate"]]
+
+    return output_tab
+
+files = {
+    "soa" : "/home/tope/Desktop/SOA Laz Jabra Jan 1-11 2024.xlsx",
+    "so" : "/home/tope/Desktop/625Tech SO Jan 1-11 2024.xlsx",
+    "si" : "/home/tope/Desktop/625Tech SI Jan 1-11 2024.xlsx",
+    "sor" : "/home/tope/Desktop/625Tech SOR Jan 1-11 2024.xlsx"
+}
+
+#output = create_template_v2(23046, "January", 2024, files['soa'], files['so'], files['si'], files['sor'])
