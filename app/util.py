@@ -86,6 +86,7 @@ def create_template(invoice_start:int, month:str, year:str, soa_dir:str, so_dir:
     try:
         # filter soa to entries with NO entry yet in SI file
         #soa_df = soa_df[~(soa_df["Order No."].isin(si_df["Reference No"]))]
+        si_df["Reference No"] = si_df["Reference No"].astype(str)
         soa_df = soa_df[~(soa_df["Order No."].isin(si_df["Reference No"]))]
     except:
         return ("Error in SI file", False)
